@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Esperanza · Conversa con DeepSeek</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <p class="badge">Proyecto de apoyo emocional</p>
+        <h1>Esperanza para quien ama y no acepta una pérdida</h1>
+        <p>
+          Comparte tu historia con un asistente basado en el código abierto de DeepSeek. Aquí
+          encontrarás palabras amables, reflexión y acompañamiento para mirar el futuro con
+          serenidad.
+        </p>
+      </header>
+
+      <section class="panel">
+        <div class="panel__intro">
+          <h2>Configura tu acceso a DeepSeek</h2>
+          <p>
+            Esta página utiliza la API compatible con OpenAI de DeepSeek. Tu clave se guarda de
+            forma local en tu navegador y nunca se envía a nadie más.
+          </p>
+        </div>
+        <form class="panel__form" id="settings-form">
+          <label class="field">
+            <span>API Key de DeepSeek</span>
+            <input
+              type="password"
+              name="apiKey"
+              id="apiKey"
+              placeholder="ds_live_..."
+              autocomplete="off"
+            />
+          </label>
+          <label class="field">
+            <span>Nombre de la persona (opcional)</span>
+            <input type="text" name="nombre" id="nombre" placeholder="Ej: Alex" />
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="preview-mode" />
+            <span>Habilitar vista previa (respuestas simuladas sin API key)</span>
+          </label>
+          <button type="submit" class="btn">Guardar configuración</button>
+          <p class="hint" id="settings-status"></p>
+        </form>
+      </section>
+
+      <section class="chat">
+        <header>
+          <h2>Cuéntanos lo que sientes</h2>
+          <p>
+            Puedes hablar de tu ex, tus recuerdos o lo que te cuesta aceptar. El asistente te
+            responderá con delicadeza y esperanza.
+          </p>
+        </header>
+        <div class="chat__window" id="chat-window"></div>
+        <form class="chat__form" id="chat-form">
+          <label class="field">
+            <span>Tu mensaje</span>
+            <textarea
+              name="mensaje"
+              id="mensaje"
+              rows="4"
+              placeholder="Escribe aquí lo que quieres compartir..."
+              required
+            ></textarea>
+          </label>
+          <button type="submit" class="btn btn--primary">Enviar mensaje</button>
+        </form>
+      </section>
+
+      <section class="support">
+        <h2>Recursos de acompañamiento</h2>
+        <ul>
+          <li>Respira profundo y permite que las emociones fluyan sin juzgarte.</li>
+          <li>Escribe una carta que nunca enviarás y libera lo que sientes.</li>
+          <li>Busca una red de apoyo: amistades, familia o profesionales.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>
+        Esta experiencia es una herramienta de reflexión. Si estás viviendo un momento difícil,
+        considera pedir ayuda profesional.
+      </p>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
