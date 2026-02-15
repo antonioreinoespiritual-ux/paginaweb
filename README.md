@@ -64,6 +64,17 @@ npm run prisma:seed
 - `npm run prisma:migrate` - run prisma migrate dev
 - `npm run prisma:seed` - seed database
 
+## Troubleshooting login
+
+- If credential login fails, ensure you ran migrations and seed first:
+
+```bash
+npx prisma migrate dev --name init
+npm run prisma:seed
+```
+
+- Confirm `.env` has a valid `NEXTAUTH_SECRET` and restart `npm run dev` after any env change.
+
 ## API endpoints
 
 - `GET/POST /api/projects`

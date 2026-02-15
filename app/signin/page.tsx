@@ -11,6 +11,7 @@ export default function SignInPage() {
   const router = useRouter();
   const [email, setEmail] = useState("demo@studio.com");
   const [password, setPassword] = useState("password123");
+  const [error, setError] = useState("");
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
@@ -22,12 +23,18 @@ export default function SignInPage() {
           <Button
             className="w-full"
             onClick={async () => {
+              setError("");
               const res = await signIn("credentials", { email, password, redirect: false });
-              if (!res?.error) router.push("/dashboard");
+              if (res?.error) {
+                setError("Invalid credentials. Check your email and password.");
+                return;
+              }
+              router.push("/dashboard");
             }}
           >
             Sign in
           </Button>
+          {error ? <p className="text-sm text-red-400">{error}</p> : null}
         </CardContent>
       </Card>
     </main>
