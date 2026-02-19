@@ -1,12 +1,22 @@
 from datetime import datetime
 import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from app.database import get_db
-from app.models import HypothesisRule, Interview, InterviewResponse, InterviewScore, EmbeddingStore
-from app.schemas.core import InterviewCreate, InterviewResponseCreate, RuleConfig
+from app.models import (
+    HypothesisRule,
+    Interview,
+    InterviewNote,
+    InterviewResponse,
+    InterviewScore,
+    InterviewSession,
+    EmbeddingStore,
+)
+from app.schemas.core import InterviewCreate, InterviewNoteCreate, InterviewResponseCreate, InterviewSessionCreate, RuleConfig
 from app.services.embedding_service import normalize_text, simple_embedding
 from app.services.scoring_engine import compute_scores
 
@@ -15,7 +25,7 @@ router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
 @router.get("")
 def list_interviews(db: Session = Depends(get_db)):
-    return db.scalars(select(Interview)).all()
+    return db.scalars(select(Interview).order_by(Interview.updated_at.desc())).all()
 
 
 @router.post("")
@@ -47,6 +57,43 @@ def finalize_interview(interview_id: int, db: Session = Depends(get_db)):
     interview.ended_at = datetime.utcnow()
     db.commit()
     return {"ok": True}
+
+
+@router.get("/{interview_id}")
+def get_interview(interview_id: int, db: Session = Depends(get_db)):
+    interview = db.get(Interview, interview_id)
+    if not interview:
+        raise HTTPException(404)
+    notes = db.scalars(select(InterviewNote).where(InterviewNote.interview_id == interview_id)).all()
+    responses = db.scalars(select(InterviewResponse).where(InterviewResponse.interview_id == interview_id)).all()
+    score = db.scalar(select(InterviewScore).where(InterviewScore.interview_id == interview_id))
+    return {"interview": interview, "notes": notes, "responses": responses, "score": score}
+
+
+@router.post("/sessions")
+def create_session(payload: InterviewSessionCreate, db: Session = Depends(get_db)):
+    session = InterviewSession(**payload.model_dump())
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+@router.get("/sessions/{session_id}")
+def get_session(session_id: int, db: Session = Depends(get_db)):
+    session = db.get(InterviewSession, session_id)
+    if not session:
+        raise HTTPException(404)
+    return session
+
+
+@router.post("/notes")
+def create_note(payload: InterviewNoteCreate, db: Session = Depends(get_db)):
+    note = InterviewNote(**payload.model_dump())
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    return note
 
 
 @router.post("/{interview_id}/responses")
@@ -81,7 +128,7 @@ def save_response(interview_id: int, payload: InterviewResponseCreate, db: Sessi
 def get_scores(interview_id: int, db: Session = Depends(get_db)):
     score = db.scalar(select(InterviewScore).where(InterviewScore.interview_id == interview_id))
     if not score:
-        raise HTTPException(404)
+        return {"total_score": 0, "criteria_scores": {}, "flags": {}}
     return score
 
 
@@ -93,3 +140,15 @@ def live_scores(interview_id: int, db: Session = Depends(get_db)):
         yield f"data: {json.dumps(payload)}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@router.get("/suggested/questions")
+def suggested_questions():
+    return {
+        "items": [
+            "¿Cuál es el problema más costoso que enfrentas hoy?",
+            "¿Qué impacto económico tiene este problema?",
+            "¿Qué has intentado hasta ahora para resolverlo?",
+            "Si tuvieras una solución hoy, ¿la comprarías?",
+        ]
+    }

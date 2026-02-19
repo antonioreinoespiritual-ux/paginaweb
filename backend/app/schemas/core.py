@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 
-
 Operator = Literal[">=", "<=", "=="]
 ScoreType = Literal["binario", "escala", "porcentaje", "similaridad", "manual"]
 TextSource = Literal["respuesta", "notas", "ambos"]
@@ -61,15 +60,21 @@ class RuleRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class FlowPayload(BaseModel):
-    name: str
-    template_id: int | None = None
-    flow_json: dict[str, Any]
-
-
 class InterviewCreate(BaseModel):
     hypothesis_id: int
     flow_id: int | None = None
+
+
+class InterviewSessionCreate(BaseModel):
+    interview_id: int
+    hypothesis_id: int
+    current_question: str = ""
+
+
+class InterviewNoteCreate(BaseModel):
+    interview_id: int
+    note_text: str
+    tags: list[str] = Field(default_factory=list)
 
 
 class InterviewResponseCreate(BaseModel):
@@ -78,6 +83,29 @@ class InterviewResponseCreate(BaseModel):
     response_type: str
     response_text: str
     metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class FlowCreate(BaseModel):
+    name: str
+    hypothesis_id: int | None = None
+    template_id: int | None = None
+
+
+class FlowNodePayload(BaseModel):
+    node_key: str
+    label: str
+    question_text: str = ""
+    response_type: str = "texto"
+    pos_x: float = 0
+    pos_y: float = 0
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class FlowEdgePayload(BaseModel):
+    edge_key: str
+    source_node_key: str
+    target_node_key: str
+    condition_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class OfferPayload(BaseModel):
@@ -91,6 +119,19 @@ class OfferPayload(BaseModel):
     script_text: str
     objections_expected: list[str] = Field(default_factory=list)
     objection_responses_tree: dict[str, Any] = Field(default_factory=dict)
+
+
+class ScriptPayload(BaseModel):
+    hypothesis_id: int
+    title: str
+    body: str
+    stage: str = "venta"
+
+
+class ObjectionPayload(BaseModel):
+    hypothesis_id: int
+    offer_id: int | None = None
+    text: str
 
 
 class SalesEventPayload(BaseModel):

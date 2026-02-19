@@ -22,3 +22,6 @@ out/
 
 # Logs
 *.log
+
+!*.env.example
+!**/.env.example
