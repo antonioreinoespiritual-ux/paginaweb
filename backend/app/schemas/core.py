@@ -2,40 +2,38 @@ from __future__ import annotations
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 
-Operator = Literal[">=", "<=", "=="]
-ScoreType = Literal["binario", "escala", "porcentaje", "similaridad", "manual"]
-TextSource = Literal["respuesta", "notas", "ambos"]
+HypStatus = Literal["draft", "running", "paused", "won", "lost"]
+InterviewStatus = Literal["in-progress", "completed"]
 
 
-class RuleConfig(BaseModel):
-    id: str
-    nombre: str
-    descripcion: str = ""
-    tipo_score: ScoreType
-    fuente_texto: TextSource = "ambos"
-    keywords_incluir: list[str] = Field(default_factory=list)
-    keywords_excluir: list[str] = Field(default_factory=list)
-    sinonimos: dict[str, list[str]] = Field(default_factory=dict)
-    similitud_minima: float = 0.7
-    peso: float = 1.0
-    umbral: float = 1.0
-    operador: Operator = ">="
-    requiere_confirmacion_manual: bool = False
-    activa_modo_venta_si_cumple: bool = False
+class ProjectBase(BaseModel):
+    name: str
+    description: str = ""
+
+
+class ProjectCreate(ProjectBase):
+    pass
+
+
+class ProjectRead(ProjectBase):
+    id: int
+    model_config = {"from_attributes": True}
 
 
 class HypothesisBase(BaseModel):
-    type: str
-    short_name: str
-    statement: str
-    independent_variable: str
-    primary_metric: str
-    channel: str
-    status: str = "draft"
-    validation_threshold: float = 70
-    min_volume: int = 10
-    tags: list[str] = Field(default_factory=list)
-    target_segments: list[str] = Field(default_factory=list)
+    project_id: int
+    title: str
+    pain: str
+    persona: str
+    context: str = ""
+    falsifiable_statement: str
+    success_criteria: dict[str, Any] = Field(default_factory=dict)
+    traffic_source: str = "organico"
+    status: HypStatus = "draft"
+    notes: str = ""
+    validation_flow_id: int | None = None
+    interview_template_id: int | None = None
+    sales_playbook_id: int | None = None
 
 
 class HypothesisCreate(HypothesisBase):
@@ -47,99 +45,75 @@ class HypothesisRead(HypothesisBase):
     model_config = {"from_attributes": True}
 
 
-class RuleCreate(BaseModel):
+class FlowBase(BaseModel):
+    hypothesis_id: int | None = None
     name: str
-    rule_json: RuleConfig
+    description: str = ""
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
 
 
-class RuleRead(BaseModel):
+class FlowCreate(FlowBase):
+    pass
+
+
+class FlowRead(FlowBase):
     id: int
-    hypothesis_id: int
-    name: str
-    rule_json: RuleConfig
+    version: int
     model_config = {"from_attributes": True}
 
 
-class InterviewCreate(BaseModel):
-    hypothesis_id: int
-    flow_id: int | None = None
-
-
-class InterviewSessionCreate(BaseModel):
-    interview_id: int
-    hypothesis_id: int
-    current_question: str = ""
-
-
-class InterviewNoteCreate(BaseModel):
-    interview_id: int
-    note_text: str
-    tags: list[str] = Field(default_factory=list)
-
-
-class InterviewResponseCreate(BaseModel):
-    question_id: str
-    question_text: str
-    response_type: str
-    response_text: str
-    metadata_json: dict[str, Any] = Field(default_factory=dict)
-
-
-class FlowCreate(BaseModel):
+class InterviewTemplateBase(BaseModel):
     name: str
-    hypothesis_id: int | None = None
+    goal: str = ""
+    target_persona: str = ""
+    questions: list[dict[str, Any]] = Field(default_factory=list)
+    scoring_rules: dict[str, Any] = Field(default_factory=dict)
+
+
+class InterviewTemplateCreate(InterviewTemplateBase):
+    pass
+
+
+class InterviewTemplateRead(InterviewTemplateBase):
+    id: int
+    model_config = {"from_attributes": True}
+
+
+class InterviewSessionBase(BaseModel):
+    hypothesis_id: int
     template_id: int | None = None
-
-
-class FlowNodePayload(BaseModel):
-    node_key: str
-    label: str
-    question_text: str = ""
-    response_type: str = "texto"
-    pos_x: float = 0
-    pos_y: float = 0
-    metadata_json: dict[str, Any] = Field(default_factory=dict)
-
-
-class FlowEdgePayload(BaseModel):
-    edge_key: str
-    source_node_key: str
-    target_node_key: str
-    condition_json: dict[str, Any] = Field(default_factory=dict)
-
-
-class OfferPayload(BaseModel):
-    hypothesis_id: int
-    name: str
-    value_proposition: str
-    base_price: float
-    price_options: list[float] = Field(default_factory=list)
-    guarantee: str
-    cta: str
-    script_text: str
-    objections_expected: list[str] = Field(default_factory=list)
-    objection_responses_tree: dict[str, Any] = Field(default_factory=dict)
-
-
-class ScriptPayload(BaseModel):
-    hypothesis_id: int
-    title: str
-    body: str
-    stage: str = "venta"
-
-
-class ObjectionPayload(BaseModel):
-    hypothesis_id: int
-    offer_id: int | None = None
-    text: str
-
-
-class SalesEventPayload(BaseModel):
-    interview_id: int
-    offer_id: int
-    response: str
-    objections: list[str] = Field(default_factory=list)
+    date: str = ""
+    interviewer: str = ""
+    respondent_alias: str = ""
     notes: str = ""
-    accepted_price: float | None = None
-    next_step: str = ""
-    lead_status: str = "warm"
+    answers: dict[str, Any] = Field(default_factory=dict)
+    score_total: float = 0
+    signals: dict[str, Any] = Field(default_factory=dict)
+    status: InterviewStatus = "in-progress"
+
+
+class InterviewSessionCreate(InterviewSessionBase):
+    pass
+
+
+class InterviewSessionRead(InterviewSessionBase):
+    id: int
+    model_config = {"from_attributes": True}
+
+
+class SalesPlaybookBase(BaseModel):
+    hypothesis_id: int
+    offer: str = ""
+    objections: dict[str, str] = Field(default_factory=dict)
+    scripts: dict[str, str] = Field(default_factory=dict)
+    followup_sequences: list[str] = Field(default_factory=list)
+
+
+class SalesPlaybookCreate(SalesPlaybookBase):
+    pass
+
+
+class SalesPlaybookRead(SalesPlaybookBase):
+    id: int
+    model_config = {"from_attributes": True}

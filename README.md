@@ -1,24 +1,42 @@
 # Research OS
 
-Herramienta para entrevistas, validación de hipótesis y mini-CRM de venta.
+Research OS ahora funciona como herramienta operable con persistencia real en DB local para:
+- Projects
+- Hypotheses (campos ricos)
+- Flows
+- Interview Templates
+- Interview Sessions
+- Sales Playbooks
 
-## Plan de cambios
+## Fase 0 — Diagnóstico
 
-### Fase 1 (implementada en esta entrega)
-- UX crítica: estados de carga/error/empty + CTA + confirmaciones + toasts.
-- Persistencia real de hipótesis, entrevistas, sesiones/notas, flujos y mini-CRM.
-- Integración frontend-backend estandarizada con cliente API único.
-- Layout dashboard persistente (sidebar responsive + breadcrumb).
+### 1) Rutas API existentes
+Se pueden listar en runtime:
 
-### Fase 2 (TODO)
-- Analytics avanzadas: records con filtros y paginación server-side.
-- Quality gates: lint, typecheck, pruebas API integrales.
-- Documentación por hipótesis (timeline de decisiones/cambios).
-- Sistema de componentes UI reutilizables más completo.
+```bash
+curl http://localhost:8000/api/routes
+```
 
-## Estructura
-- `backend/`: FastAPI + SQLAlchemy + servicios de scoring.
-- `frontend/`: Next.js App Router + TanStack Query + Zustand + Recharts + React Flow.
+Incluye CRUD para:
+- `/projects`
+- `/hypotheses`
+- `/flows`
+- `/interview-templates`
+- `/interviews`
+- `/sales-playbooks`
+
+### 2) Por qué antes no persistía
+Causas típicas corregidas:
+- Contrato frontend/backend inconsistente (rutas antiguas mezcladas con `/api/*`).
+- Entidades de UI sin modelo persistente completo.
+- Guardados parciales (sin PUT/PATCH consistente en todos los recursos).
+- Falta de trazabilidad de errores y respuestas homogéneas.
+
+### 3) Logging y manejo de errores
+- Logging backend activado en `main.py`.
+- Error handler uniforme para `HTTPException` y errores 500.
+
+## Stack y ejecución
 
 ## Variables de entorno
 
@@ -34,9 +52,8 @@ Frontend (`frontend/.env.example`):
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-## Ejecutar (manual)
+## Ejecutar backend
 
-### Backend
 ```bash
 cd backend
 python -m venv .venv
@@ -45,31 +62,42 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+## Ejecutar frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## Ejecutar ambos (opcional)
+## Ejecutar ambos desde raíz
 
 ```bash
 npm install
 npm run dev
 ```
 
-> Usa `concurrently` desde la raíz para levantar backend y frontend.
+## Checklist manual de verificación (Fase 4)
 
-## Criterios Fase 1 cubiertos
-- Cada sección tiene lista o empty state con CTA.
-- CRUD mínimo de hipótesis/flujos/ofertas/scripts/objeciones funcional.
-- Entrevista en vivo guiada con sesión + nota + score básico persistido.
-- Embudo con explicación, métricas y fallback cuando no hay datos.
-- Manejo de errores/loading centralizado en UI.
+1. Crear proyecto:
+   - Dashboard -> “Guardar proyecto”.
+   - Recargar: el proyecto sigue listado.
+2. Crear hipótesis rica:
+   - Hipótesis -> completar title, pain, persona, falsifiable statement, notes, success criteria JSON.
+   - Guardar y recargar: persiste.
+3. Crear plantilla de entrevista:
+   - Entrevistas -> pestaña Plantillas -> guardar.
+   - Recargar: persiste.
+4. Iniciar entrevista y guardar respuestas:
+   - Entrevistas -> pestaña Sesiones -> seleccionar hipótesis/plantilla -> guardar answers/notes.
+   - Recargar: persiste.
+5. Crear flow:
+   - Flujos -> guardar nodes/edges JSON.
+   - Recargar: versionado y datos persisten.
+6. Crear playbook de ventas:
+   - Ventas -> oferta + objeciones + scripts + follow-up -> guardar.
+   - Recargar: persiste.
 
-## Limpieza de artefactos temporales
-
-```bash
-./scripts/dev-clean.sh
-```
+## Notas
+- La DB local (`*.db`) está ignorada por Git.
+- No se versionan entornos virtuales ni caches.

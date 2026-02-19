@@ -10,6 +10,16 @@ export class ApiError extends Error {
   }
 }
 
+const qs = (params?: Record<string, string | number | undefined | null>) => {
+  if (!params) return '';
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') search.set(k, String(v));
+  });
+  const out = search.toString();
+  return out ? `?${out}` : '';
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     ...init,
@@ -33,8 +43,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
+  qs,
+  get: <T>(path: string, params?: Record<string, string | number | undefined | null>) => request<T>(`${path}${qs(params)}`),
   post: <T>(path: string, payload: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(payload) }),
   put: <T>(path: string, payload: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(payload) }),
+  patch: <T>(path: string, payload: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(payload) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };

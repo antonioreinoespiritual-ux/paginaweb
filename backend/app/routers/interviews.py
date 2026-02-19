@@ -1,154 +1,73 @@
-from datetime import datetime
-import json
-
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import (
-    HypothesisRule,
-    Interview,
-    InterviewNote,
-    InterviewResponse,
-    InterviewScore,
-    InterviewSession,
-    EmbeddingStore,
-)
-from app.schemas.core import InterviewCreate, InterviewNoteCreate, InterviewResponseCreate, InterviewSessionCreate, RuleConfig
-from app.services.embedding_service import normalize_text, simple_embedding
-from app.services.scoring_engine import compute_scores
+from app.models import InterviewSession
+from app.schemas.core import InterviewSessionCreate, InterviewSessionRead
 
-router = APIRouter(prefix="/api/interviews", tags=["interviews"])
+router = APIRouter(prefix="/interviews", tags=["interviews"])
 
 
-@router.get("")
-def list_interviews(db: Session = Depends(get_db)):
-    return db.scalars(select(Interview).order_by(Interview.updated_at.desc())).all()
+@router.get("", response_model=list[InterviewSessionRead])
+def list_interviews(q: str | None = None, hypothesis_id: int | None = None, status: str | None = None, db: Session = Depends(get_db)):
+    stmt = select(InterviewSession)
+    if q:
+        stmt = stmt.where(or_(InterviewSession.interviewer.ilike(f"%{q}%"), InterviewSession.respondent_alias.ilike(f"%{q}%"), InterviewSession.notes.ilike(f"%{q}%")))
+    if hypothesis_id:
+        stmt = stmt.where(InterviewSession.hypothesis_id == hypothesis_id)
+    if status:
+        stmt = stmt.where(InterviewSession.status == status)
+    return db.scalars(stmt.order_by(InterviewSession.updated_at.desc())).all()
 
 
-@router.post("")
-def create_interview(payload: InterviewCreate, db: Session = Depends(get_db)):
-    interview = Interview(**payload.model_dump(), status="draft")
-    db.add(interview)
+@router.get("/{item_id}", response_model=InterviewSessionRead)
+def get_interview(item_id: int, db: Session = Depends(get_db)):
+    item = db.get(InterviewSession, item_id)
+    if not item:
+        raise HTTPException(404, "Interview not found")
+    return item
+
+
+@router.post("", response_model=InterviewSessionRead)
+def create_interview(payload: InterviewSessionCreate, db: Session = Depends(get_db)):
+    item = InterviewSession(**payload.model_dump())
+    db.add(item)
     db.commit()
-    db.refresh(interview)
-    return interview
+    db.refresh(item)
+    return item
 
 
-@router.post("/{interview_id}/start")
-def start_interview(interview_id: int, db: Session = Depends(get_db)):
-    interview = db.get(Interview, interview_id)
-    if not interview:
-        raise HTTPException(404)
-    interview.status = "in_progress"
-    interview.started_at = datetime.utcnow()
+@router.put("/{item_id}", response_model=InterviewSessionRead)
+def update_interview(item_id: int, payload: InterviewSessionCreate, db: Session = Depends(get_db)):
+    item = db.get(InterviewSession, item_id)
+    if not item:
+        raise HTTPException(404, "Interview not found")
+    for k, v in payload.model_dump().items():
+        setattr(item, k, v)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.patch("/{item_id}", response_model=InterviewSessionRead)
+def patch_interview(item_id: int, payload: dict, db: Session = Depends(get_db)):
+    item = db.get(InterviewSession, item_id)
+    if not item:
+        raise HTTPException(404, "Interview not found")
+    for k, v in payload.items():
+        if hasattr(item, k):
+            setattr(item, k, v)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete("/{item_id}")
+def delete_interview(item_id: int, db: Session = Depends(get_db)):
+    item = db.get(InterviewSession, item_id)
+    if not item:
+        raise HTTPException(404, "Interview not found")
+    db.delete(item)
     db.commit()
     return {"ok": True}
-
-
-@router.post("/{interview_id}/finalize")
-def finalize_interview(interview_id: int, db: Session = Depends(get_db)):
-    interview = db.get(Interview, interview_id)
-    if not interview:
-        raise HTTPException(404)
-    interview.status = "completed"
-    interview.ended_at = datetime.utcnow()
-    db.commit()
-    return {"ok": True}
-
-
-@router.get("/{interview_id}")
-def get_interview(interview_id: int, db: Session = Depends(get_db)):
-    interview = db.get(Interview, interview_id)
-    if not interview:
-        raise HTTPException(404)
-    notes = db.scalars(select(InterviewNote).where(InterviewNote.interview_id == interview_id)).all()
-    responses = db.scalars(select(InterviewResponse).where(InterviewResponse.interview_id == interview_id)).all()
-    score = db.scalar(select(InterviewScore).where(InterviewScore.interview_id == interview_id))
-    return {"interview": interview, "notes": notes, "responses": responses, "score": score}
-
-
-@router.post("/sessions")
-def create_session(payload: InterviewSessionCreate, db: Session = Depends(get_db)):
-    session = InterviewSession(**payload.model_dump())
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-    return session
-
-
-@router.get("/sessions/{session_id}")
-def get_session(session_id: int, db: Session = Depends(get_db)):
-    session = db.get(InterviewSession, session_id)
-    if not session:
-        raise HTTPException(404)
-    return session
-
-
-@router.post("/notes")
-def create_note(payload: InterviewNoteCreate, db: Session = Depends(get_db)):
-    note = InterviewNote(**payload.model_dump())
-    db.add(note)
-    db.commit()
-    db.refresh(note)
-    return note
-
-
-@router.post("/{interview_id}/responses")
-def save_response(interview_id: int, payload: InterviewResponseCreate, db: Session = Depends(get_db)):
-    interview = db.get(Interview, interview_id)
-    if not interview:
-        raise HTTPException(404)
-    response = InterviewResponse(interview_id=interview_id, **payload.model_dump())
-    db.add(response)
-
-    norm = normalize_text(payload.response_text)
-    vec = simple_embedding(norm)
-    db.add(EmbeddingStore(interview_id=interview_id, hypothesis_id=interview.hypothesis_id, source_text=norm, vector=vec))
-
-    rules = db.scalars(select(HypothesisRule).where(HypothesisRule.hypothesis_id == interview.hypothesis_id)).all()
-    parsed = [RuleConfig(**r.rule_json) for r in rules]
-    score_result = compute_scores(parsed, norm)
-    cached = db.scalar(select(InterviewScore).where(InterviewScore.interview_id == interview_id))
-    if not cached:
-        cached = InterviewScore(interview_id=interview_id, hypothesis_id=interview.hypothesis_id)
-        db.add(cached)
-    cached.total_score = score_result["score_total_hipotesis"]
-    cached.criteria_scores = score_result["score_por_criterio"]
-    cached.flags = score_result["flags"]
-    cached.evidence = score_result["evidencia"]
-
-    db.commit()
-    return {"ok": True, "scores": score_result}
-
-
-@router.get("/{interview_id}/scores")
-def get_scores(interview_id: int, db: Session = Depends(get_db)):
-    score = db.scalar(select(InterviewScore).where(InterviewScore.interview_id == interview_id))
-    if not score:
-        return {"total_score": 0, "criteria_scores": {}, "flags": {}}
-    return score
-
-
-@router.get("/{interview_id}/live")
-def live_scores(interview_id: int, db: Session = Depends(get_db)):
-    def event_gen():
-        score = db.scalar(select(InterviewScore).where(InterviewScore.interview_id == interview_id))
-        payload = {"total": score.total_score if score else 0, "flags": score.flags if score else {}}
-        yield f"data: {json.dumps(payload)}\n\n"
-
-    return StreamingResponse(event_gen(), media_type="text/event-stream")
-
-
-@router.get("/suggested/questions")
-def suggested_questions():
-    return {
-        "items": [
-            "¿Cuál es el problema más costoso que enfrentas hoy?",
-            "¿Qué impacto económico tiene este problema?",
-            "¿Qué has intentado hasta ahora para resolverlo?",
-            "Si tuvieras una solución hoy, ¿la comprarías?",
-        ]
-    }

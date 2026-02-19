@@ -1,79 +1,64 @@
 'use client';
-import { useMemo, useState } from 'react';
-import ReactFlow, { Background, Controls } from 'react-flow-renderer';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/app/lib/api';
-import { EmptyState, PageHeader } from '@/app/components/ui/shared';
+import { ConfirmButton, EmptyState, Field, Input, PageHeader, Skeleton, TextArea } from '@/app/components/ui/shared';
 import { useToast } from '@/app/components/ui/toast';
 
+const empty = { hypothesis_id: '', name: '', description: '', nodes: '[{"id":"n1","label":"Inicio"}]', edges: '[]' };
+
 export default function FlowsPage() {
-  const { push } = useToast();
   const qc = useQueryClient();
-  const [selectedFlow, setSelectedFlow] = useState<number | ''>('');
-  const [nodes, setNodes] = useState<any[]>([]);
-  const [edges, setEdges] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
-  const [future, setFuture] = useState<any[]>([]);
-  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const { push } = useToast();
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [q, setQ] = useState('');
+  const [form, setForm] = useState<any>(empty);
 
-  const flows = useQuery({ queryKey: ['flows'], queryFn: () => api.get<any[]>('/api/flows') });
-  const current = useQuery({ queryKey: ['flow', selectedFlow], queryFn: () => api.get<any>(`/api/flows/${selectedFlow}`), enabled: !!selectedFlow });
+  const hypotheses = useQuery({ queryKey: ['hyp-flow'], queryFn: () => api.get<any[]>('/hypotheses') });
+  const list = useQuery({ queryKey: ['flows', q], queryFn: () => api.get<any[]>('/flows', { q }) });
+  const detail = useQuery({ queryKey: ['flow-detail', selectedId], queryFn: () => api.get<any>(`/flows/${selectedId}`), enabled: !!selectedId });
 
-  useMemo(() => {
-    if (current.data) {
-      setNodes(current.data.nodes.map((n: any) => ({ id: n.node_key, data: { label: n.label }, position: { x: n.pos_x, y: n.pos_y } })));
-      setEdges(current.data.edges.map((e: any) => ({ id: e.edge_key, source: e.source_node_key, target: e.target_node_key, label: e.condition_json?.label || '' })));
+  useEffect(() => {
+    if (detail.data) {
+      setForm({
+        ...detail.data,
+        hypothesis_id: detail.data.hypothesis_id || '',
+        nodes: JSON.stringify(detail.data.nodes || [], null, 2),
+        edges: JSON.stringify(detail.data.edges || [], null, 2),
+      });
     }
-  }, [current.data]);
+  }, [detail.data]);
 
-  const save = useMutation({
-    mutationFn: () => api.put(`/api/flows/${selectedFlow}`, {
-      name: current.data.flow.name,
-      nodes: nodes.map((n) => ({ node_key: n.id, label: n.data.label, question_text: n.data.label, pos_x: n.position.x, pos_y: n.position.y, response_type: 'texto', metadata_json: {} })),
-      edges: edges.map((e) => ({ edge_key: e.id, source_node_key: e.source, target_node_key: e.target, condition_json: { label: e.label || '' } })),
-    }),
-    onSuccess: () => { push('Flow guardado'); qc.invalidateQueries({ queryKey: ['flows'] }); },
-  });
-
-  const create = useMutation({ mutationFn: () => api.post('/api/flows', { name: `Flow ${Date.now()}` }), onSuccess: () => qc.invalidateQueries({ queryKey: ['flows'] }) });
-
-  const snapshot = () => { setHistory((h) => [...h, { nodes, edges }]); setFuture([]); };
-  const undo = () => { const prev = history.at(-1); if (!prev) return; setFuture((f) => [{ nodes, edges }, ...f]); setNodes(prev.nodes); setEdges(prev.edges); setHistory((h) => h.slice(0, -1)); };
-  const redo = () => { const next = future[0]; if (!next) return; setHistory((h) => [...h, { nodes, edges }]); setNodes(next.nodes); setEdges(next.edges); setFuture((f) => f.slice(1)); };
-
-  const addNode = () => { snapshot(); setNodes((n) => [...n, { id: `n-${Date.now()}`, data: { label: 'Nueva pregunta' }, position: { x: 120, y: 120 } }]); };
-  const removeNode = () => { if (!selectedNode) return; snapshot(); setNodes((n) => n.filter((x) => x.id !== selectedNode.id)); setEdges((e) => e.filter((x) => x.source !== selectedNode.id && x.target !== selectedNode.id)); };
+  const create = useMutation({ mutationFn: () => api.post('/flows', { ...form, hypothesis_id: form.hypothesis_id ? Number(form.hypothesis_id) : null, nodes: JSON.parse(form.nodes || '[]'), edges: JSON.parse(form.edges || '[]') }), onSuccess: (r: any) => { qc.invalidateQueries({ queryKey: ['flows'] }); setSelectedId(r.id); push('Flujo creado'); } });
+  const update = useMutation({ mutationFn: () => api.put(`/flows/${selectedId}`, { ...form, hypothesis_id: form.hypothesis_id ? Number(form.hypothesis_id) : null, nodes: JSON.parse(form.nodes || '[]'), edges: JSON.parse(form.edges || '[]') }), onSuccess: () => { qc.invalidateQueries({ queryKey: ['flows'] }); push('Flujo guardado'); } });
+  const remove = useMutation({ mutationFn: (id: number) => api.delete(`/flows/${id}`), onSuccess: () => { qc.invalidateQueries({ queryKey: ['flows'] }); setSelectedId(null); setForm(empty); push('Flujo eliminado'); } });
 
   return (
-    <div className='space-y-4'>
-      <PageHeader title='Editor de flujo' subtitle='Guardar/cargar, propiedades, undo/redo mínimo.' action={<button className='bg-accent px-3 py-2 rounded' onClick={() => create.mutate()}>Crear flow</button>} />
-      <div className='card flex gap-2 items-center'>
-        <select className='bg-soft p-2 rounded' value={selectedFlow} onChange={(e) => setSelectedFlow(Number(e.target.value))}>
-          <option value=''>Selecciona flow</option>
-          {flows.data?.map((f) => <option key={f.id} value={f.id}>{f.name} v{f.version}</option>)}
-        </select>
-        <button className='bg-soft px-2 py-1 rounded' onClick={addNode}>+ Nodo</button>
-        <button className='bg-soft px-2 py-1 rounded' onClick={undo}>Undo</button>
-        <button className='bg-soft px-2 py-1 rounded' onClick={redo}>Redo</button>
-        <button className='bg-accent px-2 py-1 rounded' onClick={() => save.mutate()} disabled={!selectedFlow}>Guardar</button>
-      </div>
-      {!selectedFlow && <EmptyState title='Sin flow seleccionado' description='Crea o selecciona un flow para editar.' />}
-      {!!selectedFlow && <div className='grid md:grid-cols-[1fr_280px] gap-4'>
-        <div className='card h-[560px]'>
-          <ReactFlow nodes={nodes} edges={edges} onNodeDragStop={(_, node) => { snapshot(); setNodes((n) => n.map((x) => x.id === node.id ? node : x)); }} onNodeClick={(_, node) => setSelectedNode(node)}>
-            <Background /><Controls />
-          </ReactFlow>
-        </div>
+    <div className='grid md:grid-cols-[340px_1fr] gap-4'>
+      <section className='space-y-3'>
+        <PageHeader title='Flujos de validación' action={<button className='bg-accent px-3 py-2 rounded' onClick={() => { setSelectedId(null); setForm(empty); }}>Nuevo</button>} />
+        <div className='card'><Input placeholder='Buscar flow' value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        {list.isLoading && <Skeleton className='h-44' />}
+        {!list.isLoading && !list.data?.length && <EmptyState title='No hay flows' description='Crea el primer flujo y vincúlalo a una hipótesis.' />}
         <div className='card space-y-2'>
-          <p className='font-medium'>Propiedades del nodo</p>
-          {!selectedNode && <p className='text-sm text-gray-400'>Selecciona un nodo.</p>}
-          {selectedNode && <>
-            <input className='w-full bg-soft p-2 rounded' value={selectedNode.data.label} onChange={(e) => setSelectedNode({ ...selectedNode, data: { label: e.target.value } })} />
-            <button className='bg-soft px-3 py-2 rounded' onClick={() => { snapshot(); setNodes((n) => n.map((x) => x.id === selectedNode.id ? selectedNode : x)); }}>Renombrar</button>
-            <button className='text-red-400' onClick={removeNode}>Eliminar nodo</button>
-          </>}
+          {list.data?.map((f) => (
+            <div key={f.id} className={`p-2 rounded ${selectedId === f.id ? 'bg-soft' : 'bg-[#100a1d]'} flex justify-between`}>
+              <button className='text-left text-sm' onClick={() => setSelectedId(f.id)}>{f.name}<div className='text-xs text-gray-400'>v{f.version}</div></button>
+              <ConfirmButton onConfirm={() => remove.mutate(f.id)}>Eliminar</ConfirmButton>
+            </div>
+          ))}
         </div>
-      </div>}
+      </section>
+      <section className='card space-y-2'>
+        <h3 className='font-semibold'>Editor</h3>
+        {detail.isLoading && selectedId && <Skeleton className='h-28' />}
+        <Field label='Hipótesis'><select className='w-full bg-soft p-2 rounded' value={form.hypothesis_id} onChange={(e) => setForm({ ...form, hypothesis_id: e.target.value })}><option value=''>Sin asociar</option>{hypotheses.data?.map((h) => <option key={h.id} value={h.id}>{h.title}</option>)}</select></Field>
+        <Field label='Nombre'><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label='Descripción'><TextArea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+        <Field label='Nodes JSON'><TextArea className='h-32' value={form.nodes} onChange={(e) => setForm({ ...form, nodes: e.target.value })} /></Field>
+        <Field label='Edges JSON'><TextArea className='h-32' value={form.edges} onChange={(e) => setForm({ ...form, edges: e.target.value })} /></Field>
+        {!selectedId ? <button className='bg-accent px-3 py-2 rounded' onClick={() => create.mutate()}>Guardar nuevo</button> : <button className='bg-accent px-3 py-2 rounded' onClick={() => update.mutate()}>Guardar cambios</button>}
+      </section>
     </div>
   );
 }

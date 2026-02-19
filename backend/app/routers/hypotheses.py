@@ -1,103 +1,68 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Hypothesis, HypothesisRule, InterviewScore
-from app.schemas.core import HypothesisCreate, HypothesisRead, RuleConfig, RuleCreate, RuleRead
-from app.services.analytics_engine import build_hypothesis_dashboard
+from app.models import Hypothesis
+from app.schemas.core import HypothesisCreate, HypothesisRead
 
-router = APIRouter(prefix="/api/hypotheses", tags=["hypotheses"])
+router = APIRouter(prefix="/hypotheses", tags=["hypotheses"])
 
 
 @router.get("", response_model=list[HypothesisRead])
 def list_hypotheses(
     q: str | None = None,
+    project_id: int | None = None,
     status: str | None = None,
-    hypothesis_type: str | None = Query(None, alias="type"),
-    limit: int = 30,
-    offset: int = 0,
     db: Session = Depends(get_db),
 ):
     stmt = select(Hypothesis)
+    filters = []
     if q:
-        stmt = stmt.where(or_(Hypothesis.short_name.ilike(f"%{q}%"), Hypothesis.statement.ilike(f"%{q}%")))
+        filters.append(or_(Hypothesis.title.ilike(f"%{q}%"), Hypothesis.pain.ilike(f"%{q}%"), Hypothesis.persona.ilike(f"%{q}%")))
+    if project_id:
+        filters.append(Hypothesis.project_id == project_id)
     if status:
-        stmt = stmt.where(Hypothesis.status == status)
-    if hypothesis_type:
-        stmt = stmt.where(Hypothesis.type == hypothesis_type)
-    stmt = stmt.order_by(Hypothesis.updated_at.desc()).limit(limit).offset(offset)
-    return db.scalars(stmt).all()
+        filters.append(Hypothesis.status == status)
+    if filters:
+        stmt = stmt.where(and_(*filters))
+    return db.scalars(stmt.order_by(Hypothesis.updated_at.desc())).all()
+
+
+@router.get("/{item_id}", response_model=HypothesisRead)
+def get_hypothesis(item_id: int, db: Session = Depends(get_db)):
+    item = db.get(Hypothesis, item_id)
+    if not item:
+        raise HTTPException(404, "Hypothesis not found")
+    return item
 
 
 @router.post("", response_model=HypothesisRead)
 def create_hypothesis(payload: HypothesisCreate, db: Session = Depends(get_db)):
-    hyp = Hypothesis(**payload.model_dump())
-    db.add(hyp)
+    item = Hypothesis(**payload.model_dump())
+    db.add(item)
     db.commit()
-    db.refresh(hyp)
-    return hyp
+    db.refresh(item)
+    return item
 
 
-@router.get("/{hypothesis_id}")
-def get_hypothesis_detail(hypothesis_id: int, db: Session = Depends(get_db)):
-    hyp = db.get(Hypothesis, hypothesis_id)
-    if not hyp:
+@router.put("/{item_id}", response_model=HypothesisRead)
+def update_hypothesis(item_id: int, payload: HypothesisCreate, db: Session = Depends(get_db)):
+    item = db.get(Hypothesis, item_id)
+    if not item:
         raise HTTPException(404, "Hypothesis not found")
-    rules = db.scalars(select(HypothesisRule).where(HypothesisRule.hypothesis_id == hypothesis_id)).all()
-    scores = db.scalars(select(InterviewScore).where(InterviewScore.hypothesis_id == hypothesis_id)).all()
-    return {
-        "hypothesis": HypothesisRead.model_validate(hyp),
-        "rules": [RuleRead(id=r.id, hypothesis_id=r.hypothesis_id, name=r.name, rule_json=RuleConfig(**r.rule_json)) for r in rules],
-        "metrics": {
-            "interviews": len(scores),
-            "avg_score": sum(s.total_score for s in scores) / len(scores) if scores else 0,
-        },
-    }
-
-
-@router.put("/{hypothesis_id}", response_model=HypothesisRead)
-def update_hypothesis(hypothesis_id: int, payload: HypothesisCreate, db: Session = Depends(get_db)):
-    hyp = db.get(Hypothesis, hypothesis_id)
-    if not hyp:
-        raise HTTPException(404)
     for k, v in payload.model_dump().items():
-        setattr(hyp, k, v)
+        setattr(item, k, v)
     db.commit()
-    db.refresh(hyp)
-    return hyp
+    db.refresh(item)
+    return item
 
 
-@router.delete("/{hypothesis_id}")
-def delete_hypothesis(hypothesis_id: int, db: Session = Depends(get_db)):
-    hyp = db.get(Hypothesis, hypothesis_id)
-    if not hyp:
-        raise HTTPException(404)
-    db.delete(hyp)
+@router.delete("/{item_id}")
+def delete_hypothesis(item_id: int, db: Session = Depends(get_db)):
+    item = db.get(Hypothesis, item_id)
+    if not item:
+        raise HTTPException(404, "Hypothesis not found")
+    db.delete(item)
     db.commit()
     return {"ok": True}
-
-
-@router.get("/{hypothesis_id}/rules", response_model=list[RuleRead])
-def list_rules(hypothesis_id: int, db: Session = Depends(get_db)):
-    rows = db.scalars(select(HypothesisRule).where(HypothesisRule.hypothesis_id == hypothesis_id)).all()
-    return [RuleRead(id=r.id, hypothesis_id=r.hypothesis_id, name=r.name, rule_json=RuleConfig(**r.rule_json)) for r in rows]
-
-
-@router.post("/{hypothesis_id}/rules", response_model=RuleRead)
-def create_rule(hypothesis_id: int, payload: RuleCreate, db: Session = Depends(get_db)):
-    rule = HypothesisRule(hypothesis_id=hypothesis_id, name=payload.name, rule_json=payload.rule_json.model_dump())
-    db.add(rule)
-    db.commit()
-    db.refresh(rule)
-    return RuleRead(id=rule.id, hypothesis_id=rule.hypothesis_id, name=rule.name, rule_json=RuleConfig(**rule.rule_json))
-
-
-@router.get("/{hypothesis_id}/dashboard")
-def get_dashboard(hypothesis_id: int, db: Session = Depends(get_db)):
-    hyp = db.get(Hypothesis, hypothesis_id)
-    scores = db.scalars(select(InterviewScore).where(InterviewScore.hypothesis_id == hypothesis_id)).all()
-    data = [{"total_score": s.total_score, "evidence": s.evidence or {}} for s in scores]
-    dashboard = build_hypothesis_dashboard(data, hyp.validation_threshold if hyp else 70)
-    dashboard["ultima_semana"] = db.scalar(select(func.count(InterviewScore.id)).where(InterviewScore.hypothesis_id == hypothesis_id)) or 0
-    return dashboard

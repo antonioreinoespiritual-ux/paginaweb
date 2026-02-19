@@ -1,77 +1,59 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import FlowEdge, FlowNode, InterviewFlow, InterviewTemplate
-from app.schemas.core import FlowCreate, FlowEdgePayload, FlowNodePayload
+from app.models import Flow
+from app.schemas.core import FlowCreate, FlowRead
 
-router = APIRouter(tags=["flows"])
-
-
-@router.get("/api/templates")
-def list_templates(db: Session = Depends(get_db)):
-    return db.scalars(select(InterviewTemplate)).all()
+router = APIRouter(prefix="/flows", tags=["flows"])
 
 
-@router.post("/api/templates")
-def create_template(payload: dict, db: Session = Depends(get_db)):
-    t = InterviewTemplate(**payload)
-    db.add(t)
-    db.commit()
-    db.refresh(t)
-    return t
+@router.get("", response_model=list[FlowRead])
+def list_flows(q: str | None = None, hypothesis_id: int | None = None, db: Session = Depends(get_db)):
+    stmt = select(Flow)
+    if q:
+        stmt = stmt.where(or_(Flow.name.ilike(f"%{q}%"), Flow.description.ilike(f"%{q}%")))
+    if hypothesis_id:
+        stmt = stmt.where(Flow.hypothesis_id == hypothesis_id)
+    return db.scalars(stmt.order_by(Flow.updated_at.desc())).all()
 
 
-@router.get("/api/flows")
-def list_flows(db: Session = Depends(get_db)):
-    return db.scalars(select(InterviewFlow).order_by(InterviewFlow.updated_at.desc())).all()
+@router.get("/{item_id}", response_model=FlowRead)
+def get_flow(item_id: int, db: Session = Depends(get_db)):
+    item = db.get(Flow, item_id)
+    if not item:
+        raise HTTPException(404, "Flow not found")
+    return item
 
 
-@router.post("/api/flows")
+@router.post("", response_model=FlowRead)
 def create_flow(payload: FlowCreate, db: Session = Depends(get_db)):
-    flow = InterviewFlow(**payload.model_dump())
-    db.add(flow)
+    item = Flow(**payload.model_dump())
+    db.add(item)
     db.commit()
-    db.refresh(flow)
-    return flow
+    db.refresh(item)
+    return item
 
 
-@router.get("/api/flows/{flow_id}")
-def get_flow(flow_id: int, db: Session = Depends(get_db)):
-    flow = db.get(InterviewFlow, flow_id)
-    if not flow:
-        raise HTTPException(404)
-    nodes = db.scalars(select(FlowNode).where(FlowNode.flow_id == flow_id)).all()
-    edges = db.scalars(select(FlowEdge).where(FlowEdge.flow_id == flow_id)).all()
-    return {"flow": flow, "nodes": nodes, "edges": edges}
-
-
-@router.put("/api/flows/{flow_id}")
-def save_flow(flow_id: int, payload: dict, db: Session = Depends(get_db)):
-    flow = db.get(InterviewFlow, flow_id)
-    if not flow:
-        raise HTTPException(404)
-    flow.name = payload.get("name", flow.name)
-    flow.version += 1
-
-    db.execute(delete(FlowNode).where(FlowNode.flow_id == flow_id))
-    db.execute(delete(FlowEdge).where(FlowEdge.flow_id == flow_id))
-
-    for n in payload.get("nodes", []):
-        db.add(FlowNode(flow_id=flow_id, **FlowNodePayload(**n).model_dump()))
-    for e in payload.get("edges", []):
-        db.add(FlowEdge(flow_id=flow_id, **FlowEdgePayload(**e).model_dump()))
-
+@router.put("/{item_id}", response_model=FlowRead)
+def update_flow(item_id: int, payload: FlowCreate, db: Session = Depends(get_db)):
+    item = db.get(Flow, item_id)
+    if not item:
+        raise HTTPException(404, "Flow not found")
+    for k, v in payload.model_dump().items():
+        setattr(item, k, v)
+    item.version += 1
     db.commit()
-    return {"ok": True, "version": flow.version}
+    db.refresh(item)
+    return item
 
 
-@router.delete("/api/flows/{flow_id}")
-def delete_flow(flow_id: int, db: Session = Depends(get_db)):
-    flow = db.get(InterviewFlow, flow_id)
-    if not flow:
-        raise HTTPException(404)
-    db.delete(flow)
+@router.delete("/{item_id}")
+def delete_flow(item_id: int, db: Session = Depends(get_db)):
+    item = db.get(Flow, item_id)
+    if not item:
+        raise HTTPException(404, "Flow not found")
+    db.delete(item)
     db.commit()
     return {"ok": True}
