@@ -101,3 +101,18 @@ npm run dev
 ## Notas
 - La DB local (`*.db`) está ignorada por Git.
 - No se versionan entornos virtuales ni caches.
+
+## Fix para error `no such column: hypotheses.project_id`
+
+Ese error aparece cuando tienes una SQLite vieja con el esquema anterior.
+
+- Desde esta versión, en startup el backend detecta el mismatch y hace backup + reset automático de esquema en SQLite.
+- Backup generado como `research_os.bak-YYYYMMDD-HHMMSS.db`.
+
+Si prefieres desactivar ese comportamiento:
+
+```bash
+export SQLITE_AUTO_RESET_ON_SCHEMA_MISMATCH=false
+```
+
+Y entonces migra manualmente o elimina el archivo `research_os.db` para regenerarlo.

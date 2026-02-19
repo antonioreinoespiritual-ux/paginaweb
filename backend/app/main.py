@@ -1,11 +1,15 @@
 import logging
+import os
 from pathlib import Path
+import shutil
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import inspect
 
-from app.database import Base, engine
+from app.database import Base, DATABASE_URL, engine
 from app.routers.flows import router as flows_router
 from app.routers.hypotheses import router as hypotheses_router
 from app.routers.interviews import router as interviews_router
@@ -37,8 +41,48 @@ app.include_router(playbooks_router)
 @app.on_event("startup")
 def startup() -> None:
     Path(".").mkdir(exist_ok=True)
+    _ensure_sqlite_schema_compatibility()
     Base.metadata.create_all(bind=engine)
     logger.info("DB ready and API started")
+
+
+def _ensure_sqlite_schema_compatibility() -> None:
+    """Dev-friendly compatibility guard for legacy SQLite schemas.
+
+    When switching from the old schema to the new one, SQLite keeps stale tables
+    because create_all() does not alter existing columns.
+    """
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+
+    # opt-out available in case someone wants strict behavior
+    if os.getenv("SQLITE_AUTO_RESET_ON_SCHEMA_MISMATCH", "true").lower() != "true":
+        return
+
+    required_cols = {
+        "project_id",
+        "title",
+        "pain",
+        "persona",
+        "falsifiable_statement",
+    }
+
+    inspector = inspect(engine)
+    if "hypotheses" not in inspector.get_table_names():
+        return
+
+    existing = {c["name"] for c in inspector.get_columns("hypotheses")}
+    if required_cols.issubset(existing):
+        return
+
+    db_path = DATABASE_URL.replace("sqlite:///", "", 1)
+    db_file = Path(db_path)
+    if db_file.exists():
+        backup = db_file.with_suffix(f".bak-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db")
+        shutil.copy2(db_file, backup)
+        logger.warning("Legacy SQLite schema detected. Backup created at: %s", backup)
+
+    Base.metadata.drop_all(bind=engine)
 
 
 @app.exception_handler(HTTPException)
