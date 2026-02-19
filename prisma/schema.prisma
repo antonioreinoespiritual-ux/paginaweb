@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  createdAt     DateTime  @default(now())
+  projects      Project[]
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Project {
+  id              String            @id @default(cuid())
+  name            String
+  description     String
+  createdAt       DateTime          @default(now())
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  segments        Segment[]
+  problems        Problem[]
+  solutions       Solution[]
+  attributes      Attribute[]
+  differentiators Differentiation[]
+  positionings    Positioning[]
+  userStories     UserStory[]
+  kpis            KPI[]
+  milestones      Milestone[]
+}
+
+model Segment {
+  id          String  @id @default(cuid())
+  title       String
+  description String
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Problem {
+  id          String  @id @default(cuid())
+  description String
+  severity    Int
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Solution {
+  id          String  @id @default(cuid())
+  description String
+  impact      Int
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Attribute {
+  id          String  @id @default(cuid())
+  title       String
+  description String
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Differentiation {
+  id          String  @id @default(cuid())
+  title       String
+  description String
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Positioning {
+  id          String  @id @default(cuid())
+  statement   String
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model UserStory {
+  id          String  @id @default(cuid())
+  role        String
+  feature     String
+  benefit     String
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model KPI {
+  id         String  @id @default(cuid())
+  name       String
+  metricType String
+  value      Float
+  target     Float
+  projectId  String
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Milestone {
+  id        String   @id @default(cuid())
+  title     String
+  dueDate   DateTime
+  status    String
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
