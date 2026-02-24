@@ -116,3 +116,16 @@ export SQLITE_AUTO_RESET_ON_SCHEMA_MISMATCH=false
 ```
 
 Y entonces migra manualmente o elimina el archivo `research_os.db` para regenerarlo.
+
+
+## Frontend alternativo (Vite + React) para Home Cloud
+
+Si quieres correr únicamente el Home estilo cloud en Vite:
+
+```bash
+cd frontend-vite
+npm install
+npm run dev
+```
+
+Abre `http://localhost:5173`.
