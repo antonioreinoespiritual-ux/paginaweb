@@ -1,5 +1,22 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-body { @apply bg-[#0b0615] text-gray-100; }
-.card { @apply bg-panel border border-soft rounded-xl p-4; }
+
+body {
+  @apply bg-[#0b0615] text-gray-100;
+  background-image: radial-gradient(circle at 20% 0%, rgba(124, 58, 237, 0.18), transparent 35%), radial-gradient(circle at 85% 15%, rgba(59, 130, 246, 0.15), transparent 40%);
+}
+
+.card {
+  @apply bg-panel border border-soft rounded-xl p-4;
+  box-shadow: 0 10px 28px rgba(4, 0, 15, 0.35);
+}
+
+.cloud-hero {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.23), rgba(29, 78, 216, 0.2));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 22px 40px rgba(8, 2, 25, 0.45);
+}
+
+.cloud-tile {
+  background: linear-gradient(180deg, rgba(27, 16, 47, 0.9), rgba(18, 10, 31, 0.95));
+}
